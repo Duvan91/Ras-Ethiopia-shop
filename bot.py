@@ -1,3 +1,7 @@
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
+from telegram import WebAppInfo
+CHANNEL_USERNAME = "@Ethiopianonlineshoppin"
+WEBAPP_URL = "https://duvan91.github.io/Ras-Ethiopia-shop/"
 import os
 import json
 import logging
@@ -75,17 +79,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await show_categories(update, context)
 
 
+, reply_markup=InlineKeyboardMarkup(keyboard))
 async def show_categories(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = []
-    for cat in data["categories"]:
-        keyboard.append([InlineKeyboardButton(f"📁 {cat}", callback_data=f"cat_{cat}")])
-    keyboard.append([InlineKeyboardButton("🛒 View Cart", callback_data="view_cart")])
-    text = "Welcome to Ras Ethiopia Shop! ሰላም! Choose a category:"
+    keyboard = [[InlineKeyboardButton("🛍 Open Shop", web_app=WebAppInfo(url=WEBAPP_URL))]]
+    text = "Welcome to Ras Ethiopia Shop! ሰላም! Tap below to browse and shop:"
     if update.message:
         await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
     else:
         await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-
 
 def products_in_category(cat):
     return {pid: p for pid, p in data["products"].items() if p["category"] == cat}
@@ -254,10 +255,28 @@ async def get_payment_proof(update: Update, context: ContextTypes.DEFAULT_TYPE):
     carts[user_id] = {}
     return ConversationHandler.END
 
+async def webapp_data_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    order = json.loads(update.effective_message.web_app_data.data)
+    user = update.effective_user
+    lines = [f"🆕 NEW ORDER (Mini App)\n"]
+    total = 0
+    for pid, qty in order["cart"].items():
+        p = data["products"].get(pid)
+        if p:
+            sub = p["price"] * qty
+            total += sub
+            lines.append(f"{p['name']} x{qty} — {sub:.2f} ETB")
+            p["stock"] = max(0, p["stock"] - qty)
+    lines.append(f"\nTotal: {total:.2f} ETB")
+    lines.append(f"\nName: {order['name']}\nAddress: {order['address']}\nPhone: {order['phone']}")
+    lines.append(f"Buyer: @{user.username or user.id}")
+    save_data(data)
 
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Cancelled. Send /start to shop again.")
-    return ConversationHandler.END
+    admin_chat = context.bot_data.get("admin_chat_id")
+    if admin_chat:
+        await context.bot.send_message(chat_id=admin_chat, text="\n".join(lines))
+
+    await update.message.reply_text("✅ Order received! We'll confirm your payment and contact you shortly.")
 
 
 # ---------- ADMIN FLOW ----------
@@ -498,7 +517,7 @@ def main():
     app.add_handler(checkout_conv)
     app.add_handler(add_product_conv)
     app.add_handler(add_category_conv)
-    app.add_handler(CallbackQueryHandler(button_handler))
+    app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, webapp_data_handler))
 
     print("Bot is running...")
     app.run_polling()
