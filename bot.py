@@ -77,10 +77,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await require_join_message(update)
             return
     await show_categories(update, context)
-
-
 , reply_markup=InlineKeyboardMarkup(keyboard))
-async def show_categories(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
     keyboard = [[InlineKeyboardButton("🛍 Open Shop", web_app=WebAppInfo(url=WEBAPP_URL))]]
     text = "Welcome to Ras Ethiopia Shop! ሰላም! Tap below to browse and shop:"
     if update.message:
