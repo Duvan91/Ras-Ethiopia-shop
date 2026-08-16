@@ -1,0 +1,167 @@
+import os
+import logging
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import (
+    Application, CommandHandler, CallbackQueryHandler,
+    MessageHandler, ContextTypes, ConversationHandler, filters
+)
+
+logging.basicConfig(level=logging.INFO)
+
+PRODUCTS = [
+    {"id": "1", "name": "T-Shirt", "price": 15.00, "emoji": "👕"},
+    {"id": "2", "name": "Sneakers", "price": 45.00, "emoji": "👟"},
+    {"id": "3", "name": "Cap", "price": 12.00, "emoji": "🧢"},
+    {"id": "4", "name": "Hoodie", "price": 35.00, "emoji": "🧥"},
+]
+
+carts = {}
+NAME, ADDRESS, PHONE = range(3)
+
+
+def get_product(pid):
+    return next((p for p in PRODUCTS if p["id"] == pid), None)
+
+
+def cart_total(user_id):
+    cart = carts.get(user_id, {})
+    total = 0
+    for pid, qty in cart.items():
+        p = get_product(pid)
+        if p:
+            total += p["price"] * qty
+    return total
+
+
+def cart_text(user_id):
+    cart = carts.get(user_id, {})
+    if not cart:
+        return "Your cart is empty."
+    lines = ["🛒 Your Cart:\n"]
+    for pid, qty in cart.items():
+        p = get_product(pid)
+        if p:
+            lines.append(f"{p['emoji']} {p['name']} x{qty} — ${p['price'] * qty:.2f}")
+    lines.append(f"\nTotal: ${cart_total(user_id):.2f}")
+    return "\n".join(lines)
+
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = []
+    for p in PRODUCTS:
+        keyboard.append([InlineKeyboardButton(
+            f"{p['emoji']} {p['name']} — ${p['price']:.2f}",
+            callback_data=f"add_{p['id']}"
+        )])
+    keyboard.append([InlineKeyboardButton("🛒 View Cart", callback_data="view_cart")])
+    await update.message.reply_text(
+        "Welcome to the shop! Tap a product to add it to your cart:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+
+    if query.data.startswith("add_"):
+        pid = query.data.split("_")[1]
+        cart = carts.setdefault(user_id, {})
+        cart[pid] = cart.get(pid, 0) + 1
+        p = get_product(pid)
+        await query.answer(f"Added {p['name']} to cart!", show_alert=False)
+
+    elif query.data == "view_cart":
+        keyboard = [
+            [InlineKeyboardButton("✅ Checkout", callback_data="checkout")],
+            [InlineKeyboardButton("🗑 Clear Cart", callback_data="clear_cart")],
+        ]
+        await query.edit_message_text(
+            cart_text(user_id), reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+    elif query.data == "clear_cart":
+        carts[user_id] = {}
+        await query.edit_message_text("Cart cleared. Send /start to shop again.")
+
+    elif query.data == "checkout":
+        if not carts.get(user_id):
+            await query.edit_message_text("Your cart is empty. Send /start to shop.")
+            return ConversationHandler.END
+        await query.edit_message_text(
+            f"{cart_text(user_id)}\n\nLet's complete your order.\nWhat's your name?"
+        )
+        return NAME
+
+
+async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["name"] = update.message.text
+    await update.message.reply_text("Great. What's your delivery address?")
+    return ADDRESS
+
+
+async def get_address(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["address"] = update.message.text
+    await update.message.reply_text("Last thing — your phone number?")
+    return PHONE
+
+
+async def get_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["phone"] = update.message.text
+    user_id = update.effective_user.id
+    summary = (
+        f"✅ Order confirmed!\n\n"
+        f"{cart_text(user_id)}\n\n"
+        f"Name: {context.user_data['name']}\n"
+        f"Address: {context.user_data['address']}\n"
+        f"Phone: {context.user_data['phone']}\n\n"
+        f"We'll be in touch to confirm delivery. Thank you!"
+    )
+    await update.message.reply_text(summary)
+    carts[user_id] = {}
+    return ConversationHandler.END
+
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Checkout cancelled. Send /start to shop again.")
+    return ConversationHandler.END
+
+
+async def cart_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    keyboard = [
+        [InlineKeyboardButton("✅ Checkout", callback_data="checkout")],
+        [InlineKeyboardButton("🗑 Clear Cart", callback_data="clear_cart")],
+    ]
+    await update.message.reply_text(cart_text(user_id), reply_markup=InlineKeyboardMarkup(keyboard))
+
+
+def main():
+    token = os.environ.get("BOT_TOKEN")
+    if not token:
+        raise RuntimeError("Set the BOT_TOKEN environment variable with your bot token from @BotFather")
+
+    app = Application.builder().token(token).build()
+
+    conv_handler = ConversationHandler(
+        entry_points=[CallbackQueryHandler(button_handler, pattern="^checkout$")],
+        states={
+            NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_name)],
+            ADDRESS: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_address)],
+            PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_phone)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+    )
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("cart", cart_command))
+    app.add_handler(conv_handler)
+    app.add_handler(CallbackQueryHandler(button_handler))
+
+    print("Bot is running...")
+    app.run_polling()
+
+
+if __name__ == "__main__":
+    main()
