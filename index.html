@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ras Ethiopia Shop</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  body { font-family: -apple-system, sans-serif; background: #0f0f0f; color: #fff; margin: 0; padding: 16px; }
+  h2 { text-align: center; }
+  .cat-btn, .prod-card, .cart-item { background: #1c1c1e; border-radius: 12px; padding: 14px; margin-bottom: 10px; }
+  .cat-btn { text-align: center; font-weight: 600; }
+  .prod-card { display: flex; justify-content: space-between; align-items: center; }
+  .prod-card img { width: 50px; height: 50px; border-radius: 8px; object-fit: cover; margin-right: 10px; }
+  .prod-info { flex: 1; }
+  button { background: #2ea6ff; color: #fff; border: none; border-radius: 8px; padding: 8px 14px; font-weight: 600; }
+  .back { background: #333; margin-bottom: 12px; }
+  input, textarea { width: 100%; padding: 10px; margin-bottom: 10px; border-radius: 8px; border: 1px solid #333; background: #1c1c1e; color: #fff; box-sizing: border-box; }
+  .total { font-size: 18px; font-weight: 700; margin: 12px 0; }
+</style>
+</head>
+<body>
+
+<div id="app"></div>
+
+<script>
+const tg = window.Telegram.WebApp;
+tg.expand();
+
+const DATA_URL = "shop_data.json"; // same repo, same folder
+let SHOP = null;
+let cart = {};
+let view = "categories";
+let currentCat = null;
+
+async function loadData() {
+  const res = await fetch(DATA_URL + "?t=" + Date.now());
+  SHOP = await res.json();
+  render();
+}
+
+function render() {
+  const app = document.getElementById("app");
+  if (view === "categories") renderCategories(app);
+  else if (view === "products") renderProducts(app);
+  else if (view === "cart") renderCart(app);
+  else if (view === "checkout") renderCheckout(app);
+}
+
+function renderCategories(app) {
+  let html = "<h2>🛍 Ras Ethiopia Shop</h2>";
+  SHOP.categories.forEach(cat => {
+    html += `<div class="cat-btn" onclick="openCategory('${cat}')">📁 ${cat}</div>`;
+  });
+  html += `<button style="width:100%;margin-top:10px" onclick="goCart()">🛒 View Cart (${cartCount()})</button>`;
+  app.innerHTML = html;
+}
+
+function openCategory(cat) {
+  currentCat = cat;
+  view = "products";
+  render();
+}
+
+function renderProducts(app) {
+  let html = `<div class="back" onclick="goCategories()">⬅️ Back</div><h2>${currentCat}</h2>`;
+  const prods = Object.entries(SHOP.products).filter(([id, p]) => p.category === currentCat);
+  if (prods.length === 0) html += "<p>No products in this category yet.</p>";
+  prods.forEach(([id, p]) => {
+    const out = p.stock <= 0;
+    html += `<div class="prod-card">
+      <div class="prod-info"><b>${p.name}</b><br>${p.price.toFixed(2)} ETB ${out ? " (Out of stock)" : ""}</div>
+      <button ${out ? "disabled" : ""} onclick="addToCart('${id}')">Add</button>
+    </div>`;
+  });
+  app.innerHTML = html;
+}
+
+function addToCart(id) {
+  cart[id] = (cart[id] || 0) + 1;
+  tg.HapticFeedback.impactOccurred("light");
+}
+
+function cartCount() {
+  return Object.values(cart).reduce((a, b) => a + b, 0);
+}
+
+function goCategories() { view = "categories"; render(); }
+function goCart() { view = "cart"; render(); }
+
+function renderCart(app) {
+  let html = `<div class="back" onclick="goCategories()">⬅️ Back</div><h2>🛒 Your Cart</h2>`;
+  let total = 0;
+  const entries = Object.entries(cart);
+  if (entries.length === 0) html += "<p>Your cart is empty.</p>";
+  entries.forEach(([id, qty]) => {
+    const p = SHOP.products[id];
+    if (!p) return;
+    const sub = p.price * qty;
+    total += sub;
+    html += `<div class="cart-item">${p.name} x${qty} — ${sub.toFixed(2)} ETB</div>`;
+  });
+  html += `<div class="total">Total: ${total.toFixed(2)} ETB</div>`;
+  if (entries.length > 0) html += `<button style="width:100%" onclick="goCheckout()">✅ Checkout</button>`;
+  app.innerHTML = html;
+}
+
+function goCheckout() { view = "checkout"; render(); }
+
+function renderCheckout(app) {
+  let html = `<div class="back" onclick="goCart()">⬅️ Back</div><h2>Checkout</h2>
+    <input id="name" placeholder="Your name">
+    <input id="address" placeholder="Delivery address / Sub-City">
+    <input id="phone" placeholder="Phone number">
+    <p><b>Payment:</b> Telebirr / CBE / Cash on Delivery — details after order</p>
+    <button style="width:100%" onclick="submitOrder()">Place Order</button>`;
+  app.innerHTML = html;
+}
+
+function submitOrder() {
+  const name = document.getElementById("name").value;
+  const address = document.getElementById("address").value;
+  const phone = document.getElementById("phone").value;
+  if (!name || !address || !phone) {
+    tg.showAlert("Please fill in all fields.");
+    return;
+  }
+  const order = { name, address, phone, cart };
+  tg.sendData(JSON.stringify(order));
+  tg.close();
+}
+
+loadData();
+</script>
+</body>
+</html>
