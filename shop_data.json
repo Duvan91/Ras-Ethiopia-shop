@@ -1,0 +1,24 @@
+{
+  "products": {
+    "1": {
+      "name": "P9 Headset",
+      "price": 2199.0,
+      "category": "Phone",
+      "stock": 10,
+      "photo": "AgACAgQAAxkBAAMvaoH0U4I_1bX_RJjxJl1zZv0-GfgAAk4Qaxu80xBQ2q2YV2pM6WoBAAMCAAN5AAM9BA"
+    }
+  },
+  "categories": [
+    "Clothes",
+    "Watch",
+    "Phone",
+    "Book",
+    "Yes"
+  ],
+  "payments": {
+    "telebirr": true,
+    "cbe": true,
+    "cod": true
+  },
+  "next_id": 2
+}
