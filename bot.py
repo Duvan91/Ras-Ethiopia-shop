@@ -1,4 +1,4 @@
- import os
+import os
 import json
 import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
@@ -13,7 +13,7 @@ logging.basicConfig(level=logging.INFO)
 ADMIN_USERNAME = "RasEthiopia"          # without @
 SUPPORT_PHONE = "+251955071070"
 SUPPORT_TELEGRAM = "@Rasethiopiashupport"
-CHANNEL_USERNAME = "@EthiopianShoponline_et"  # <-- EDIT THIS to your real channel
+CHANNEL_USERNAME = "@Ethiopianonlineshoppin"
 
 DATA_FILE = "shop_data.json"
 
@@ -241,14 +241,12 @@ async def get_payment_proof(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Phone: {context.user_data.get('phone')}\n"
         f"Buyer: @{user.username or user.id}"
     )
-    # notify admin
     admin_chats = context.bot_data.get("admin_chat_id")
     if admin_chats:
         await context.bot.send_message(chat_id=admin_chats, text=order_summary)
         if update.message.photo:
             await context.bot.send_photo(chat_id=admin_chats, photo=update.message.photo[-1].file_id)
     await update.message.reply_text("✅ Order received! We'll confirm your payment and contact you shortly.")
-    # reduce stock
     for pid, qty in carts.get(user_id, {}).items():
         if pid in data["products"]:
             data["products"][pid]["stock"] = max(0, data["products"][pid]["stock"] - qty)
